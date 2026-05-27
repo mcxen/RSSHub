@@ -8,6 +8,9 @@ import { routePath } from 'hono/route';
 import { config } from '@/config';
 import healthz from '@/routes/healthz';
 import index from '@/routes/index';
+import manageSouthPlus from '@/routes/manage-south-plus';
+import { getHandler as manageSouthPlusApiGetHandler, postHandler as manageSouthPlusApiPostHandler } from '@/routes/manage-south-plus.api';
+import manageSouthPlusPlist from '@/routes/manage-south-plus.plist';
 import metrics from '@/routes/metrics';
 import robotstxt from '@/routes/robots.txt';
 import type { APIRoute, Namespace, Route } from '@/types';
@@ -256,8 +259,52 @@ for (const namespace in namespaces) {
 }
 
 app.get('/', index);
+app.get('/manage/south-plus', manageSouthPlus);
+app.get('/manage/south-plus/launch-agent.plist', manageSouthPlusPlist);
+app.get('/api/local-forward/south-plus/config', manageSouthPlusApiGetHandler);
+app.post('/api/local-forward/south-plus/config', manageSouthPlusApiPostHandler);
 app.get('/healthz', healthz);
 app.get('/robots.txt', robotstxt);
+app.get('/routes', async (ctx) => {
+    const { default: routesPage } = await import('@/pages/routes');
+    return routesPage(ctx);
+});
+app.get('/translate', async (ctx) => {
+    const { default: translatePage } = await import('@/pages/translate');
+    return translatePage(ctx);
+});
+app.post('/translate/api/preview', async (ctx) => {
+    const { default: translateApi } = await import('@/pages/translate-api');
+    return translateApi.preview(ctx);
+});
+app.post('/translate/api/feeds', async (ctx) => {
+    const { default: translateApi } = await import('@/pages/translate-api');
+    return translateApi.saveFeed(ctx);
+});
+app.get('/translate/api/feeds', async (ctx) => {
+    const { default: translateApi } = await import('@/pages/translate-api');
+    return translateApi.listFeeds(ctx);
+});
+app.delete('/translate/api/feeds/:id', async (ctx) => {
+    const { default: translateApi } = await import('@/pages/translate-api');
+    return translateApi.deleteFeed(ctx);
+});
+app.get('/translate/feed/:id', async (ctx) => {
+    const { default: translateApi } = await import('@/pages/translate-api');
+    return translateApi.getFeed(ctx);
+});
+app.post('/translate/api/refresh/:id', async (ctx) => {
+    const { default: translateApi } = await import('@/pages/translate-api');
+    return translateApi.refreshFeed(ctx);
+});
+app.get('/translate/api/config', async (ctx) => {
+    const { default: translateApi } = await import('@/pages/translate-api');
+    return translateApi.getConfig(ctx);
+});
+app.post('/translate/api/config', async (ctx) => {
+    const { default: translateApi } = await import('@/pages/translate-api');
+    return translateApi.saveConfig(ctx);
+});
 if (config.debugInfo !== 'false') {
     // Only enable tracing in debug mode
     app.get('/metrics', metrics);

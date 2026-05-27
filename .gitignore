@@ -42,3 +42,8 @@ yarn.lock
 yarn-error.log
 
 dist-container
+lib/routes/translate-config.json
+lib/routes/translate-feeds.json
+frpc.ini
+lib/routes/feeds.json
+TASK_*.md

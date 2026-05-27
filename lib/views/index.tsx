@@ -154,6 +154,15 @@ const Index: FC<{ debugQuery: string | undefined }> = ({ debugQuery }) => {
                     .
                 </p>
                 <div className="font-bold space-x-4 text-sm">
+                    <a href="/manage/south-plus">
+                        <button className="text-white bg-[#5F7F70] hover:bg-[#4F6C5F] py-2 px-4 rounded-full transition-colors">South Plus Manager</button>
+                    </a>
+                    <a href="/routes">
+                        <button className="text-white bg-[#00A040] hover:bg-[#008030] py-2 px-4 rounded-full transition-colors">Routes Console</button>
+                    </a>
+                    <a href="/translate">
+                        <button className="text-white bg-[#7C3AED] hover:bg-[#6D28D9] py-2 px-4 rounded-full transition-colors">Translate Console</button>
+                    </a>
                     <a target="_blank" href="https://docs.rsshub.app">
                         <button className="text-white bg-[#F5712C] hover:bg-[#DD4A15] py-2 px-4 rounded-full transition-colors">Home</button>
                     </a>
