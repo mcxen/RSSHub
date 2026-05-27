@@ -1,12 +1,10 @@
-import { readFileSync, writeFileSync } from 'node:fs';
-import path from 'node:path';
-
 import type { Context } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { convert } from 'html-to-text';
 import Parser from 'rss-parser';
 
-import { batchTranslate, batchTranslateDetailed, type CacheStrategy, getCachedTranslation, invalidateCache, loadTranslateConfig, setCachedTranslation, type TranslationEngine } from '@/utils/kiss-translate';
+import { batchTranslate, batchTranslateDetailed, type CacheStrategy, getCachedTranslation, invalidateCache, setCachedTranslation, type TranslationEngine } from '@/utils/kiss-translate';
+import { deleteFeedById, findFeedById, loadStoredFeeds, loadTranslateConfig, saveAllFeeds, saveFeed, saveTranslateConfig } from '@/utils/translate-db';
 
 type StoredFeed = {
     id: string;
@@ -61,32 +59,11 @@ type ParsedFeed = {
 };
 
 const parser = new Parser();
-const feedsPath = path.join(import.meta.dirname, '..', 'routes', 'translate-feeds.json');
-const configPath = path.join(import.meta.dirname, '..', 'routes', 'translate-config.json');
 const previewLimit = 3;
 const translationChunkSize = 20;
 
 function isDefined<T>(value: T | undefined): value is T {
     return value !== undefined;
-}
-
-function loadStoredFeeds(): StoredFeed[] {
-    try {
-        const feeds = JSON.parse(readFileSync(feedsPath, 'utf-8')) as Array<StoredFeed | Omit<StoredFeed, 'engine' | 'paragraphMode' | 'translationStrategy' | 'cacheTtlMinutes'>>;
-        return feeds.map((feed) => ({
-            ...feed,
-            engine: 'engine' in feed && feed.engine ? feed.engine : 'deepseek',
-            paragraphMode: 'paragraphMode' in feed ? Boolean(feed.paragraphMode) : false,
-            translationStrategy: 'translationStrategy' in feed ? feed.translationStrategy : 'realtime',
-            cacheTtlMinutes: 'cacheTtlMinutes' in feed ? feed.cacheTtlMinutes : 30,
-        }));
-    } catch {
-        return [];
-    }
-}
-
-function saveStoredFeeds(feeds: StoredFeed[]) {
-    writeFileSync(feedsPath, JSON.stringify(feeds, null, 2) + '\n', 'utf-8');
 }
 
 function validateFeedUrl(value: string) {
@@ -375,7 +352,7 @@ async function buildTranslatedFeedXml(feed: ParsedFeed, config: StoredFeed) {
             for (let pi = 0; pi < count; pi += 1) {
                 const orig = originalParagraphs[pi] ?? '';
                 const tran = translatedParagraphs[pi] ?? '';
-                blocks.push(`<section><h3>Original</h3><p>${xmlEscape(orig)}</p></section>` + `<section><h3>Translated</h3><p>${xmlEscape(tran)}</p></section>`);
+                blocks.push(`<section><h3>Original</h3><p>${xmlEscape(orig)}</p></section><section><h3>Translated</h3><p>${xmlEscape(tran)}</p></section>`);
             }
             descriptionXml = `<![CDATA[${sanitizeCdata(blocks.join(''))}]]>`;
         } else {
@@ -550,7 +527,7 @@ async function saveFeed(ctx: Context) {
             validateFeedUrl(nextFeed.url);
             feeds[index] = nextFeed;
             invalidateCache(nextFeed.id);
-            saveStoredFeeds(feeds);
+            saveAllFeeds(feeds);
             return ctx.json(nextFeed);
         }
 
@@ -579,7 +556,7 @@ async function saveFeed(ctx: Context) {
         };
 
         feeds.unshift(nextFeed);
-        saveStoredFeeds(feeds);
+        saveAllFeeds(feeds);
         return ctx.json(nextFeed, { status: 201 });
     } catch (error) {
         return jsonError(ctx, 400, error instanceof Error ? error.message : 'Unable to save translation config.');
@@ -592,21 +569,19 @@ function listFeeds(ctx: Context) {
 
 function deleteFeed(ctx: Context) {
     const id = ctx.req.param('id');
-    const feeds = loadStoredFeeds();
-    const nextFeeds = feeds.filter((feed) => feed.id !== id);
+    const deleted = deleteFeedById(id);
 
-    if (nextFeeds.length === feeds.length) {
+    if (!deleted) {
         return jsonError(ctx, 404, 'Saved translation config not found.');
     }
 
-    saveStoredFeeds(nextFeeds);
     return ctx.json({ ok: true });
 }
 
 async function getFeed(ctx: Context) {
     try {
         const id = ctx.req.param('id');
-        const storedFeed = loadStoredFeeds().find((feed) => feed.id === id);
+        const storedFeed = findFeedById(id);
 
         if (!storedFeed) {
             return ctx.text('Saved translation config not found.', 404);
@@ -655,7 +630,7 @@ async function getFeed(ctx: Context) {
 async function refreshFeed(ctx: Context) {
     try {
         const id = ctx.req.param('id');
-        const storedFeed = loadStoredFeeds().find((feed) => feed.id === id);
+        const storedFeed = findFeedById(id);
 
         if (!storedFeed) {
             return ctx.text('Saved translation config not found.', 404);
@@ -705,7 +680,7 @@ async function saveConfig(ctx: Context) {
             kissTranslateUrl: body.kissTranslateUrl === undefined ? existing.kissTranslateUrl : body.kissTranslateUrl.trim(),
         };
 
-        writeFileSync(configPath, JSON.stringify(nextConfig, null, 2) + '\n', 'utf-8');
+        saveTranslateConfig(nextConfig);
         return ctx.json({ ok: true });
     } catch (error) {
         return jsonError(ctx, 400, error instanceof Error ? error.message : 'Unable to save config.');

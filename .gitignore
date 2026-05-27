@@ -44,6 +44,9 @@ yarn-error.log
 dist-container
 lib/routes/translate-config.json
 lib/routes/translate-feeds.json
+lib/routes/translate.db
+lib/routes/translate.db-shm
+lib/routes/translate.db-wal
 frpc.ini
 lib/routes/feeds.json
 TASK_*.md
