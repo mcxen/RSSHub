@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import type { SouthPlusForwardConfig } from './shared';
-import { buildSouthPlusForumUrl, southPlusDefaultForumId } from './shared';
+import { buildSouthPlusForumUrl, normalizeSouthPlusFilters, southPlusDefaultForumId } from './shared';
 
 const getSouthPlusStorageDirectory = () => (process.platform === 'darwin' ? path.join(os.homedir(), 'Library', 'Application Support', 'RSSHub') : path.join(os.homedir(), '.rsshub'));
 
@@ -12,6 +12,12 @@ const getSouthPlusConfigPath = () => path.join(getSouthPlusStorageDirectory(), '
 const getDefaultSouthPlusConfig = (): SouthPlusForwardConfig => ({
     cookie: '',
     forumUrl: buildSouthPlusForumUrl(southPlusDefaultForumId),
+    includeKeywords: [],
+    excludeKeywords: [],
+    includeAuthors: [],
+    excludeAuthors: [],
+    includeCategories: [],
+    excludeCategories: [],
     updatedAt: new Date(0).toISOString(),
 });
 
@@ -23,6 +29,7 @@ const readSouthPlusConfig = async (): Promise<SouthPlusForwardConfig> => {
         return {
             cookie: parsed.cookie?.trim() ?? '',
             forumUrl: parsed.forumUrl?.trim() || buildSouthPlusForumUrl(southPlusDefaultForumId),
+            ...normalizeSouthPlusFilters(parsed),
             updatedAt: parsed.updatedAt ?? new Date(0).toISOString(),
         };
     } catch (error) {

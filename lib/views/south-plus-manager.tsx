@@ -15,9 +15,10 @@ type SouthPlusManagerPageProps = {
 const SouthPlusManagerPage: FC<SouthPlusManagerPageProps> = ({ config, configPath, currentOrigin, plistPath, repoPath }) => {
     const localFeedUrl = `${currentOrigin}${southPlusLocalFeedPath}`;
     const apiPath = '/api/local-forward/south-plus/config';
+    const browserLoginApiPath = '/api/local-forward/south-plus/browser-login';
     const setupCommands = ['pnpm build', 'node scripts/macos/install-launch-agent.mjs', 'launchctl load ~/Library/LaunchAgents/cc.rsshub.south-plus.plist'];
     const bootScript = `
-        window.__SOUTH_PLUS_MANAGER__ = ${JSON.stringify({ config, localFeedUrl, southPlusManagerPath, apiPath }).replaceAll('<', String.raw`\u003c`)};
+        window.__SOUTH_PLUS_MANAGER__ = ${JSON.stringify({ config, localFeedUrl, southPlusManagerPath, apiPath, browserLoginApiPath }).replaceAll('<', String.raw`\u003c`)};
     `;
     const interactionScript = `
         (() => {
@@ -25,8 +26,16 @@ const SouthPlusManagerPage: FC<SouthPlusManagerPageProps> = ({ config, configPat
             const form = document.getElementById('south-plus-config-form');
             const status = document.getElementById('save-status');
             const feedButton = document.getElementById('copy-feed-url');
+            const browserLoginButton = document.getElementById('browser-login');
+            const forceBrowserLoginButton = document.getElementById('force-browser-login');
             const cookieInput = document.getElementById('cookie');
             const forumUrlInput = document.getElementById('forum-url');
+            const includeKeywordsInput = document.getElementById('include-keywords');
+            const excludeKeywordsInput = document.getElementById('exclude-keywords');
+            const includeAuthorsInput = document.getElementById('include-authors');
+            const excludeAuthorsInput = document.getElementById('exclude-authors');
+            const includeCategoriesInput = document.getElementById('include-categories');
+            const excludeCategoriesInput = document.getElementById('exclude-categories');
 
             const showStatus = (message) => {
                 if (!status) {
@@ -42,6 +51,53 @@ const SouthPlusManagerPage: FC<SouthPlusManagerPageProps> = ({ config, configPat
                 showStatus('本地 RSS 地址已复制到剪贴板。');
             });
 
+            const doBrowserLogin = async (force) => {
+                const btn = force ? forceBrowserLoginButton : browserLoginButton;
+                btn?.setAttribute('disabled', 'true');
+                btn?.classList.add('cursor-not-allowed', 'opacity-60');
+                showStatus(force ? '正在强制重启浏览器...' : '正在启动浏览器...');
+                const pendingHintTimer = window.setTimeout(() => {
+                    showStatus('请在弹出的浏览器窗口中登录，然后点击页面上的"已登录"按钮');
+                }, 1200);
+
+                try {
+                    const response = await fetch(state.browserLoginApiPath, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ force: !!force }),
+                    });
+                    const result = await response.json();
+
+                    if (!response.ok || result.code !== 0) {
+                        showStatus(result.message || '启动失败，请稍后重试。');
+                        return;
+                    }
+
+                    if (result.data?.status === 'success') {
+                        if (cookieInput && result.data.cookie) {
+                            cookieInput.value = result.data.cookie;
+                        }
+                        if (forumUrlInput) {
+                            forumUrlInput.value = 'https://south-plus.org/thread.php?fid-48.html';
+                        }
+                        showStatus('Cookie 已保存');
+                        window.setTimeout(() => window.location.reload(), 900);
+                        return;
+                    }
+
+                    showStatus(result.data?.message || '请在弹出的浏览器窗口中登录，然后点击页面上的"已登录"按钮');
+                } catch (error) {
+                    showStatus(error instanceof Error ? error.message : '启动失败，请稍后重试。');
+                } finally {
+                    window.clearTimeout(pendingHintTimer);
+                    btn?.removeAttribute('disabled');
+                    btn?.classList.remove('cursor-not-allowed', 'opacity-60');
+                }
+            };
+
+            browserLoginButton?.addEventListener('click', () => doBrowserLogin(false));
+            forceBrowserLoginButton?.addEventListener('click', () => doBrowserLogin(true));
+
             form?.addEventListener('submit', async (event) => {
                 event.preventDefault();
 
@@ -53,6 +109,12 @@ const SouthPlusManagerPage: FC<SouthPlusManagerPageProps> = ({ config, configPat
                     body: JSON.stringify({
                         cookie: cookieInput?.value ?? '',
                         forumUrl: forumUrlInput?.value ?? '',
+                        includeKeywords: includeKeywordsInput?.value ?? '',
+                        excludeKeywords: excludeKeywordsInput?.value ?? '',
+                        includeAuthors: includeAuthorsInput?.value ?? '',
+                        excludeAuthors: excludeAuthorsInput?.value ?? '',
+                        includeCategories: includeCategoriesInput?.value ?? '',
+                        excludeCategories: excludeCategoriesInput?.value ?? '',
                     }),
                 });
 
@@ -111,6 +173,10 @@ const SouthPlusManagerPage: FC<SouthPlusManagerPageProps> = ({ config, configPat
                                         <p className="mt-2 break-all text-sm font-semibold text-[#5f4334]">{config.cookiePreview}</p>
                                     </div>
                                     <div className="rounded-2xl bg-[#edf0f5] p-4">
+                                        <p className="text-xs uppercase tracking-[0.2em] text-[#5a6677]">启用筛选</p>
+                                        <p className="mt-2 text-2xl font-bold text-[#384353]">{config.activeFilterCount}</p>
+                                    </div>
+                                    <div className="rounded-2xl bg-[#eef3ef] p-4 sm:col-span-2">
                                         <p className="text-xs uppercase tracking-[0.2em] text-[#5a6677]">配置文件</p>
                                         <p className="mt-2 break-all text-sm font-semibold text-[#384353]">{configPath}</p>
                                     </div>
@@ -144,9 +210,73 @@ const SouthPlusManagerPage: FC<SouthPlusManagerPageProps> = ({ config, configPat
                                         placeholder="把浏览器里的完整 Cookie 粘贴到这里"
                                     ></textarea>
                                 </label>
+                                <p className="text-sm leading-7 text-[#64513f]">{config.configured ? '当前已有已保存的 Cookie；只有在你粘贴新的 Cookie 并保存时才会替换。' : '目前还没有保存 Cookie，先登录 South Plus 再把完整 Cookie 粘贴进来。'}</p>
+                                <div className="grid gap-4 md:grid-cols-2">
+                                    <label className="block">
+                                        <span className="mb-2 block text-sm font-semibold text-[#5a4839]">包含关键词</span>
+                                        <textarea
+                                            className="min-h-28 w-full rounded-2xl border border-[#d8cbb8] bg-[#fdfaf4] px-4 py-3 text-sm text-[#30261d] outline-none transition focus:border-[#7a6551] focus:ring-2 focus:ring-[#d8cab8]"
+                                            id="include-keywords"
+                                            name="includeKeywords"
+                                            placeholder="只保留命中这些词的帖子，支持逗号或换行"
+                                        >{config.filters.includeKeywords.join('\n')}</textarea>
+                                    </label>
+                                    <label className="block">
+                                        <span className="mb-2 block text-sm font-semibold text-[#5a4839]">排除关键词</span>
+                                        <textarea
+                                            className="min-h-28 w-full rounded-2xl border border-[#d8cbb8] bg-[#fdfaf4] px-4 py-3 text-sm text-[#30261d] outline-none transition focus:border-[#7a6551] focus:ring-2 focus:ring-[#d8cab8]"
+                                            id="exclude-keywords"
+                                            name="excludeKeywords"
+                                            placeholder="命中这些词的帖子会被排除"
+                                        >{config.filters.excludeKeywords.join('\n')}</textarea>
+                                    </label>
+                                    <label className="block">
+                                        <span className="mb-2 block text-sm font-semibold text-[#5a4839]">包含作者</span>
+                                        <textarea
+                                            className="min-h-28 w-full rounded-2xl border border-[#d8cbb8] bg-[#fdfaf4] px-4 py-3 text-sm text-[#30261d] outline-none transition focus:border-[#7a6551] focus:ring-2 focus:ring-[#d8cab8]"
+                                            id="include-authors"
+                                            name="includeAuthors"
+                                            placeholder="只保留指定作者，支持部分匹配"
+                                        >{config.filters.includeAuthors.join('\n')}</textarea>
+                                    </label>
+                                    <label className="block">
+                                        <span className="mb-2 block text-sm font-semibold text-[#5a4839]">排除作者</span>
+                                        <textarea
+                                            className="min-h-28 w-full rounded-2xl border border-[#d8cbb8] bg-[#fdfaf4] px-4 py-3 text-sm text-[#30261d] outline-none transition focus:border-[#7a6551] focus:ring-2 focus:ring-[#d8cab8]"
+                                            id="exclude-authors"
+                                            name="excludeAuthors"
+                                            placeholder="屏蔽指定作者"
+                                        >{config.filters.excludeAuthors.join('\n')}</textarea>
+                                    </label>
+                                    <label className="block">
+                                        <span className="mb-2 block text-sm font-semibold text-[#5a4839]">包含分类</span>
+                                        <textarea
+                                            className="min-h-28 w-full rounded-2xl border border-[#d8cbb8] bg-[#fdfaf4] px-4 py-3 text-sm text-[#30261d] outline-none transition focus:border-[#7a6551] focus:ring-2 focus:ring-[#d8cab8]"
+                                            id="include-categories"
+                                            name="includeCategories"
+                                            placeholder="只保留指定分类"
+                                        >{config.filters.includeCategories.join('\n')}</textarea>
+                                    </label>
+                                    <label className="block">
+                                        <span className="mb-2 block text-sm font-semibold text-[#5a4839]">排除分类</span>
+                                        <textarea
+                                            className="min-h-28 w-full rounded-2xl border border-[#d8cbb8] bg-[#fdfaf4] px-4 py-3 text-sm text-[#30261d] outline-none transition focus:border-[#7a6551] focus:ring-2 focus:ring-[#d8cab8]"
+                                            id="exclude-categories"
+                                            name="excludeCategories"
+                                            placeholder="屏蔽指定分类"
+                                        >{config.filters.excludeCategories.join('\n')}</textarea>
+                                    </label>
+                                </div>
+                                <p className="text-sm leading-7 text-[#64513f]">筛选会同时匹配帖子标题、作者、分类和正文内容。多个条件可以同时启用；包含条件不为空时，帖子必须命中对应字段才会进入 RSS。</p>
                                 <div className="flex flex-wrap gap-3">
                                     <button className="rounded-full bg-[#9f5f3f] px-5 py-3 text-sm font-semibold text-[#fffaf4] transition hover:bg-[#8d5236]" type="submit">
                                         保存配置
+                                    </button>
+                                    <button className="rounded-full border border-[#8f7961] px-5 py-3 text-sm font-semibold text-[#5b4837] transition hover:bg-[#efe7da]" id="browser-login" type="button">
+                                        自动获取 Cookie
+                                    </button>
+                                    <button className="rounded-full border border-[#b85c5c] px-5 py-3 text-sm font-semibold text-[#8b4040] transition hover:bg-[#f5e0e0]" id="force-browser-login" type="button">
+                                        强制新开浏览器
                                     </button>
                                     <button className="rounded-full border border-[#8f7961] px-5 py-3 text-sm font-semibold text-[#5b4837] transition hover:bg-[#efe7da]" id="copy-feed-url" type="button">
                                         复制本地 RSS 地址
@@ -161,7 +291,8 @@ const SouthPlusManagerPage: FC<SouthPlusManagerPageProps> = ({ config, configPat
                                 <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[#8d745c]">Local Feed</p>
                                 <h2 className="mt-2 text-2xl font-bold text-[#382a1f]">固定本地 RSS 地址</h2>
                                 <code className="mt-4 block rounded-2xl bg-[#efe7da] px-4 py-4 text-sm text-[#463629]">{localFeedUrl}</code>
-                                <p className="mt-4 text-sm leading-7 text-[#64513f]">这个地址始终读取你当前保存的 South Plus 版块与 Cookie，不需要把 Cookie 暴露到订阅器里。</p>
+                                <p className="mt-4 text-sm leading-7 text-[#64513f]">这个地址始终读取你当前保存的 South Plus 版块、Cookie 和筛选条件，不需要把登录态暴露到订阅器里。</p>
+                                <p className="mt-3 text-sm leading-7 text-[#64513f]">当前已启用 {config.activeFilterCount} 个筛选词条，适合直接给 Follow、Miniflux 或 FreshRSS 订阅。</p>
                             </div>
 
                             <div className="rounded-[28px] border border-[#cfc2b0] bg-[#fffdf8]/95 p-8 shadow-[0_14px_50px_rgba(64,49,34,0.08)]">

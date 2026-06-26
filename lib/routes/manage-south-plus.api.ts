@@ -1,6 +1,7 @@
 import type { Handler } from 'hono';
 
-import { parseSouthPlusForumInput, southPlusLocalFeedPath, summarizeSouthPlusConfig } from '@/local-forward/south-plus/shared';
+import { launchBrowserLoginAndExtractCookie } from '@/local-forward/south-plus/browser-login';
+import { normalizeSouthPlusFilters, parseSouthPlusForumInput, southPlusLocalFeedPath, summarizeSouthPlusConfig } from '@/local-forward/south-plus/shared';
 import { getSouthPlusConfigPath, readSouthPlusConfig, saveSouthPlusConfig } from '@/local-forward/south-plus/store';
 
 const getHandler: Handler = async (ctx) => {
@@ -17,8 +18,18 @@ const getHandler: Handler = async (ctx) => {
 };
 
 const postHandler: Handler = async (ctx) => {
-    const body = await ctx.req.json<{ cookie?: string; forumUrl?: string }>();
-    const cookie = body.cookie?.trim() ?? '';
+    const existingConfig = await readSouthPlusConfig();
+    const body = await ctx.req.json<{
+        cookie?: string;
+        forumUrl?: string;
+        includeKeywords?: string | string[];
+        excludeKeywords?: string | string[];
+        includeAuthors?: string | string[];
+        excludeAuthors?: string | string[];
+        includeCategories?: string | string[];
+        excludeCategories?: string | string[];
+    }>();
+    const cookie = body.cookie?.trim() || existingConfig.cookie.trim();
 
     if (!cookie) {
         return ctx.json(
@@ -32,9 +43,11 @@ const postHandler: Handler = async (ctx) => {
 
     try {
         const parsed = parseSouthPlusForumInput(body.forumUrl);
+        const filters = normalizeSouthPlusFilters(body);
         const saved = await saveSouthPlusConfig({
             cookie,
             forumUrl: parsed.forumUrl,
+            ...filters,
             updatedAt: new Date().toISOString(),
         });
 
@@ -56,4 +69,24 @@ const postHandler: Handler = async (ctx) => {
     }
 };
 
-export { getHandler, postHandler };
+const browserLoginHandler: Handler = async (ctx) => {
+    const body = await ctx.req.json<{ force?: boolean }>().catch(() => ({}) as { force?: boolean });
+    const result = await launchBrowserLoginAndExtractCookie(body.force);
+
+    if (result.status === 'success' || result.status === 'busy') {
+        return ctx.json({
+            code: 0,
+            data: result,
+        });
+    }
+
+    return ctx.json(
+        {
+            code: -1,
+            message: result.message,
+        },
+        400
+    );
+};
+
+export { browserLoginHandler, getHandler, postHandler };

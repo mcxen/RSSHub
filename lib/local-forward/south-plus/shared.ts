@@ -6,8 +6,19 @@ const southPlusManagerPath = '/manage/south-plus';
 type SouthPlusForwardConfig = {
     cookie: string;
     forumUrl: string;
+    includeKeywords: string[];
+    excludeKeywords: string[];
+    includeAuthors: string[];
+    excludeAuthors: string[];
+    includeCategories: string[];
+    excludeCategories: string[];
     updatedAt: string;
 };
+
+type SouthPlusForwardFilters = Pick<
+    SouthPlusForwardConfig,
+    'includeKeywords' | 'excludeKeywords' | 'includeAuthors' | 'excludeAuthors' | 'includeCategories' | 'excludeCategories'
+>;
 
 type SouthPlusForwardConfigSummary = {
     configured: boolean;
@@ -15,6 +26,8 @@ type SouthPlusForwardConfigSummary = {
     forumUrl: string;
     cookiePreview: string;
     cookieLength: number;
+    filters: SouthPlusForwardFilters;
+    activeFilterCount: number;
     updatedAt?: string;
 };
 
@@ -51,6 +64,28 @@ const extractForumId = (url: string) => {
 };
 
 const buildSouthPlusForumUrl = (forumId: string) => `${southPlusRootUrl}/thread.php?fid-${forumId}.html`;
+
+const splitFilterTerms = (input: string | string[] | undefined) => {
+    if (Array.isArray(input)) {
+        return input
+            .map((item) => item.trim())
+            .filter(Boolean);
+    }
+
+    return (input ?? '')
+        .split(/[\n,，;；]+/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+};
+
+const normalizeSouthPlusFilters = (filters?: Partial<SouthPlusForwardFilters>): SouthPlusForwardFilters => ({
+    includeKeywords: splitFilterTerms(filters?.includeKeywords),
+    excludeKeywords: splitFilterTerms(filters?.excludeKeywords),
+    includeAuthors: splitFilterTerms(filters?.includeAuthors),
+    excludeAuthors: splitFilterTerms(filters?.excludeAuthors),
+    includeCategories: splitFilterTerms(filters?.includeCategories),
+    excludeCategories: splitFilterTerms(filters?.excludeCategories),
+});
 
 const parseSouthPlusForumInput = (input: string | undefined) => {
     const normalizedInput = normalizeSouthPlusUrl(input ?? '') || buildSouthPlusForumUrl(southPlusDefaultForumId);
@@ -91,6 +126,8 @@ const redactCookie = (cookie: string | undefined) => {
 const summarizeSouthPlusConfig = (config?: SouthPlusForwardConfig): SouthPlusForwardConfigSummary => {
     const parsed = parseSouthPlusForumInput(config?.forumUrl);
     const cookie = redactCookie(config?.cookie);
+    const filters = normalizeSouthPlusFilters(config);
+    const activeFilterCount = Object.values(filters).reduce((count, terms) => count + terms.length, 0);
 
     return {
         configured: Boolean(config?.cookie?.trim()),
@@ -98,10 +135,12 @@ const summarizeSouthPlusConfig = (config?: SouthPlusForwardConfig): SouthPlusFor
         forumUrl: parsed.forumUrl,
         cookiePreview: cookie.cookiePreview,
         cookieLength: cookie.cookieLength,
+        filters,
+        activeFilterCount,
         updatedAt: config?.updatedAt,
     };
 };
 
-export { buildSouthPlusForumUrl, extractForumId, parseSouthPlusForumInput, redactCookie, southPlusDefaultForumId, southPlusLocalFeedPath, southPlusManagerPath, southPlusRootUrl, summarizeSouthPlusConfig };
+export { buildSouthPlusForumUrl, extractForumId, normalizeSouthPlusFilters, parseSouthPlusForumInput, redactCookie, southPlusDefaultForumId, southPlusLocalFeedPath, southPlusManagerPath, southPlusRootUrl, summarizeSouthPlusConfig };
 
-export type { SouthPlusForwardConfig, SouthPlusForwardConfigSummary };
+export type { SouthPlusForwardConfig, SouthPlusForwardConfigSummary, SouthPlusForwardFilters };

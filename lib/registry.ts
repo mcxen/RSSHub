@@ -9,7 +9,7 @@ import { config } from '@/config';
 import healthz from '@/routes/healthz';
 import index from '@/routes/index';
 import manageSouthPlus from '@/routes/manage-south-plus';
-import { getHandler as manageSouthPlusApiGetHandler, postHandler as manageSouthPlusApiPostHandler } from '@/routes/manage-south-plus.api';
+import { browserLoginHandler, getHandler as manageSouthPlusApiGetHandler, postHandler as manageSouthPlusApiPostHandler } from '@/routes/manage-south-plus.api';
 import manageSouthPlusPlist from '@/routes/manage-south-plus.plist';
 import metrics from '@/routes/metrics';
 import robotstxt from '@/routes/robots.txt';
@@ -263,6 +263,7 @@ app.get('/manage/south-plus', manageSouthPlus);
 app.get('/manage/south-plus/launch-agent.plist', manageSouthPlusPlist);
 app.get('/api/local-forward/south-plus/config', manageSouthPlusApiGetHandler);
 app.post('/api/local-forward/south-plus/config', manageSouthPlusApiPostHandler);
+app.post('/api/local-forward/south-plus/browser-login', browserLoginHandler);
 app.get('/healthz', healthz);
 app.get('/robots.txt', robotstxt);
 app.get('/routes', async (ctx) => {
